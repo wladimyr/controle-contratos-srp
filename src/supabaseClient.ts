@@ -1,7 +1,6 @@
-TypeScript
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = 'https://sssaepolvrfafqttrvth.supabase.co'
-const supabasePublishableKey = 'sb_publishable_r_sFpCqDIxIlEylStuSGfw_dM_TveSA'
+const supabaseUrl = 'SUA_PROJECT_URL_AQUI'
+const supabaseAnonKey = 'SUA_CHAVE_ANON_PUBLIC_AQUI'
 
-export const supabase = createClient(supabaseUrl, supabasePublishableKey)
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
