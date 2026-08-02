@@ -21,7 +21,7 @@ export interface Medicao {
 
 export interface SubContrato {
   id: string;
-  subId: string; // Ex: 01/2026, 02/2026
+  subId: string;
   secretariaOrgao: string;
   objetoEspecifico: string;
   numeroContratoMae: string;
@@ -38,7 +38,7 @@ export interface SubContrato {
 export interface LicitacaoMae {
   id: string;
   numeroProcesso: string;
-  modalidade: string; // Pregão Eletrônico, Dispensa, Inexigibilidade, etc.
+  modalidade: string;
   numeroLicitacao: string;
   ano: string;
   objetoGeral: string;
@@ -108,7 +108,7 @@ export default function App() {
   const [carregandoNuvem, setCarregandoNuvem] = useState(true);
   const [erroSincronizacao, setErroSincronizacao] = useState<string | null>(null);
 
-  // Estados de Navegação e Filtros
+  // Navegação e Filtros
   const [abaAtiva, setAbaAtiva] = useState<'dashboard' | 'licitacoes' | 'subcontratos' | 'medicoes'>('dashboard');
   const [busca, setBusca] = useState('');
   
@@ -127,26 +127,23 @@ export default function App() {
 
   const evitaSalvarNoInicioDeCarregamento = useRef(true);
 
-  // 1. Carregar dados do Supabase ao iniciar + Realtime
+  // 1. Carregar dados do Supabase
   useEffect(() => {
     async function carregarDados() {
       try {
         setErroSincronizacao(null);
-        const { data, error } = await supabase
-          .from('processos')
-          .select('*');
+        const { data, error } = await supabase.from('processos').select('*');
 
         if (error) throw error;
 
         if (data && data.length > 0 && data[0].data) {
           setLicitacoes(data[0].data);
         } else {
-          // Se a tabela estiver vazia, grava os dados iniciais do mock
           await supabase.from('processos').insert([{ data: MOCK_INICIAL }]);
         }
       } catch (err: any) {
         console.error('Erro ao carregar do Supabase:', err);
-        setErroSincronizacao('Erro ao conectar com o banco de dados na nuvem. Verifique suas credenciais no supabaseClient.ts');
+        setErroSincronizacao('Erro ao conectar com o banco de dados na nuvem.');
       } finally {
         setCarregandoNuvem(false);
       }
@@ -154,7 +151,6 @@ export default function App() {
 
     carregarDados();
 
-    // Sincronização em Tempo Real (Realtime) entre dispositivos
     const channel = supabase
       .channel('schema-db-changes')
       .on(
@@ -173,7 +169,7 @@ export default function App() {
     };
   }, []);
 
-  // 2. Salvar automaticamente no Supabase sempre que 'licitacoes' sofrer alteração
+  // 2. Salvar automaticamente no Supabase
   useEffect(() => {
     if (evitaSalvarNoInicioDeCarregamento.current) {
       evitaSalvarNoInicioDeCarregamento.current = false;
@@ -205,7 +201,7 @@ export default function App() {
     }
   }, [licitacoes, carregandoNuvem]);
 
-  // --- FILTRAGEM DINÂMICA COM BUSCA ---
+  // Busca Filtrada
   const licitacoesFiltradas = licitacoes.filter(lic => {
     const termo = busca.toLowerCase();
     const termoEmMae = 
@@ -236,7 +232,7 @@ export default function App() {
     return termoEmMae || termoEmSub || termoEmMedicao;
   });
 
-  // --- FUNÇÕES DE CRUD (Licitações Mães) ---
+  // Funções CRUD Licitação
   const handleSalvarLicitacao = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
@@ -267,12 +263,12 @@ export default function App() {
   };
 
   const excluirLicitacao = (id: string) => {
-    if (confirm('Tem certeza que deseja excluir esta licitação mãe e todos os seus subcontratos vinculados?')) {
+    if (confirm('Excluir esta licitação e seus subcontratos?')) {
       setLicitacoes(licitacoes.filter(l => l.id !== id));
     }
   };
 
-  // --- FUNÇÕES DE CRUD (SubContratos) ---
+  // Funções CRUD Subcontrato
   const handleSalvarSubContrato = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
@@ -309,7 +305,7 @@ export default function App() {
   };
 
   const excluirSubContrato = (licId: string, subId: string) => {
-    if (confirm('Deseja realmente excluir este subcontrato e suas medições?')) {
+    if (confirm('Excluir este subcontrato?')) {
       setLicitacoes(licitacoes.map(lic => {
         if (lic.id === licId) {
           return { ...lic, subContratos: lic.subContratos.filter(s => s.id !== subId) };
@@ -319,7 +315,7 @@ export default function App() {
     }
   };
 
-  // --- FUNÇÕES DE CRUD (Medições / Parcelas) ---
+  // Funções CRUD Medição
   const handleSalvarMedicao = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
@@ -358,7 +354,7 @@ export default function App() {
   };
 
   const excluirMedicao = (licId: string, subId: string, medId: string) => {
-    if (confirm('Deseja excluir esta medição/parcela?')) {
+    if (confirm('Excluir esta medição?')) {
       setLicitacoes(licitacoes.map(lic => {
         if (lic.id === licId) {
           const subsAtualizados = lic.subContratos.map(sub => {
@@ -374,7 +370,7 @@ export default function App() {
     }
   };
 
-  // --- TOTAIS E INDICADORES ---
+  // Indicadores
   const totalLicitacoes = licitacoes.length;
   const totalSubContratos = licitacoes.reduce((acc, l) => acc + l.subContratos.length, 0);
   const valorTotalContratado = licitacoes.reduce((acc, l) => 
@@ -388,21 +384,20 @@ export default function App() {
 
   if (carregandoNuvem) {
     return (
-      <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center">
+      <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center">
         <RefreshCw className="w-10 h-10 animate-spin text-blue-500 mb-4" />
-        <p className="text-lg font-medium">Sincronizando dados com o Supabase...</p>
+        <p className="text-lg font-medium">Sincronizando com o Supabase...</p>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
-      {/* Alerta de Erro caso ocorra problema com chaves do Supabase */}
       {erroSincronizacao && (
         <div className="bg-amber-500/10 border-l-4 border-amber-500 text-amber-200 px-4 py-3 m-4 rounded shadow">
           <div className="flex items-center">
             <AlertTriangle className="w-5 h-5 mr-2 text-amber-400" />
-            <span className="font-semibold">Aviso de Configuração:</span> {erroSincronizacao}
+            <span className="font-semibold">Aviso:</span> {erroSincronizacao}
           </div>
         </div>
       )}
@@ -424,7 +419,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Abas de Navegação */}
+        {/* NAVEGAÇÃO / ABAS */}
         <nav className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
           <button
             onClick={() => setAbaAtiva('dashboard')}
@@ -461,7 +456,7 @@ export default function App() {
         </nav>
       </header>
 
-      {/* BARRA DE PESQUISA / FILTRO GLOBAL */}
+      {/* BARRA DE PESQUISA */}
       <div className="bg-slate-900/60 border-b border-slate-800/80 px-6 py-3">
         <div className="max-w-7xl mx-auto flex items-center gap-3 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2">
           <Search className="w-4 h-4 text-slate-400 shrink-0" />
@@ -483,10 +478,9 @@ export default function App() {
       {/* CONTEÚDO PRINCIPAL */}
       <main className="flex-1 p-6 max-w-7xl mx-auto w-full space-y-6">
         
-        {/* --- ABA 1: DASHBOARD --- */}
+        {/* DASHBOARD */}
         {abaAtiva === 'dashboard' && (
-          <div className="space-y-6 animate-fadeIn">
-            {/* Cards de Métricas */}
+          <div className="space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm">
                 <div className="flex justify-between items-start">
@@ -541,7 +535,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Resumo e Atividades Recentes */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-sm">
                 <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
@@ -595,9 +588,9 @@ export default function App() {
           </div>
         )}
 
-        {/* --- ABA 2: LICITAÇÕES / ATAS --- */}
+        {/* LICITAÇÕES / ATAS */}
         {abaAtiva === 'licitacoes' && (
-          <div className="space-y-6 animate-fadeIn">
+          <div className="space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
               <div>
                 <h2 className="text-xl font-bold text-white">Processos Licitatórios e Atas (SRP)</h2>
@@ -617,7 +610,7 @@ export default function App() {
             <div className="grid grid-cols-1 gap-4">
               {licitacoesFiltradas.length === 0 ? (
                 <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center text-slate-400">
-                  Nenhuma licitação encontrada para os termos pesquisados.
+                  Nenhuma licitação encontrada.
                 </div>
               ) : (
                 licitacoesFiltradas.map(lic => (
@@ -667,11 +660,10 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Lista de Subcontratos vinculados */}
                     <div>
                       <h4 className="text-sm font-semibold text-slate-300 mb-3">Subcontratos Vinculados ({lic.subContratos.length})</h4>
                       {lic.subContratos.length === 0 ? (
-                        <p className="text-xs text-slate-500 italic bg-slate-950 p-3 rounded-lg">Nenhum subcontrato cadastrado para esta licitação mãe.</p>
+                        <p className="text-xs text-slate-500 italic bg-slate-950 p-3 rounded-lg">Nenhum subcontrato cadastrado.</p>
                       ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {lic.subContratos.map(sub => (
@@ -691,7 +683,6 @@ export default function App() {
                                       setMedicaoEmEdicao(null);
                                       setModalMedicaoOpen(true);
                                     }}
-                                    title="Adicionar Medição/Parcela"
                                     className="p-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 rounded transition"
                                   >
                                     <Plus className="w-3.5 h-3.5" />
@@ -733,12 +724,12 @@ export default function App() {
           </div>
         )}
 
-        {/* --- ABA 3: SUBCONTRATOS --- */}
+        {/* SUBCONTRATOS */}
         {abaAtiva === 'subcontratos' && (
-          <div className="space-y-6 animate-fadeIn">
+          <div className="space-y-6">
             <div>
               <h2 className="text-xl font-bold text-white">Todos os Subcontratos</h2>
-              <p className="text-xs text-slate-400">Visão geral e controle de vigência dos subcontratos por órgão/secretaria.</p>
+              <p className="text-xs text-slate-400">Visão geral e controle de vigência dos subcontratos.</p>
             </div>
 
             <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
@@ -800,12 +791,12 @@ export default function App() {
           </div>
         )}
 
-        {/* --- ABA 4: MEDIÇÕES & NFS-E --- */}
+        {/* MEDIÇÕES & NFS-E */}
         {abaAtiva === 'medicoes' && (
-          <div className="space-y-6 animate-fadeIn">
+          <div className="space-y-6">
             <div>
-              <h2 className="text-xl font-bold text-white">Controle de Medições (Parcelas) & Prazos NFS-e</h2>
-              <p className="text-xs text-slate-400">Acompanhe faturamentos, notas fiscais emitidas e status de pagamento.</p>
+              <h2 className="text-xl font-bold text-white">Controle de Medições & Prazos NFS-e</h2>
+              <p className="text-xs text-slate-400">Acompanhe faturamentos e notas fiscais emitidas.</p>
             </div>
 
             <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
@@ -882,12 +873,10 @@ export default function App() {
 
       </main>
 
-      {/* --- MODAIS DE CADASTRO / EDIÇÃO --- */}
-
       {/* MODAL LICITAÇÃO */}
       {modalLicitacaoOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl animate-scaleUp">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl">
             <div className="flex justify-between items-center px-6 py-4 border-b border-slate-800">
               <h3 className="text-lg font-bold text-white">
                 {licitacaoEmEdicao ? 'Editar Licitação / Ata' : 'Nova Licitação / Ata'}
@@ -945,7 +934,7 @@ export default function App() {
       {/* MODAL SUBCONTRATO */}
       {modalSubContratoOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl animate-scaleUp">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl">
             <div className="flex justify-between items-center px-6 py-4 border-b border-slate-800">
               <h3 className="text-lg font-bold text-white">
                 {subContratoEmEdicao ? 'Editar Subcontrato' : 'Novo Subcontrato'}
@@ -1013,7 +1002,7 @@ export default function App() {
       {/* MODAL MEDIÇÃO */}
       {modalMedicaoOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl overflow-hidden shadow-2xl animate-scaleUp">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl overflow-hidden shadow-2xl">
             <div className="flex justify-between items-center px-6 py-4 border-b border-slate-800">
               <h3 className="text-lg font-bold text-white">
                 {medicaoEmEdicao ? 'Editar Medição / Parcela' : 'Nova Medição / Parcela'}
@@ -1055,7 +1044,7 @@ export default function App() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Observações / Anotações</label>
+                <label className="block text-xs font-medium text-slate-300 mb-1">Observações</label>
                 <textarea name="observacoes" rows={2} defaultValue={medicaoEmEdicao?.observacoes} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500" />
               </div>
               <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
