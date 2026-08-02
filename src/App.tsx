@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './supabaseClient';
 import { 
-  Plus, Search, FileText, Calendar, Building, DollarSign, 
+  Plus, export, Search, FileText, Calendar, Building, DollarSign, 
   CheckCircle, AlertTriangle, Clock, Trash2, Edit2, ChevronRight, 
   Paperclip, Shield, BarChart2, Layers, Download, Upload, RefreshCw, X
 } from 'lucide-react';
