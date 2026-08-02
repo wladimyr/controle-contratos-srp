@@ -205,6 +205,37 @@ export default function App() {
     }
   }, [licitacoes, carregandoNuvem]);
 
+  // --- FILTRAGEM DINÂMICA COM BUSCA ---
+  const licitacoesFiltradas = licitacoes.filter(lic => {
+    const termo = busca.toLowerCase();
+    const termoEmMae = 
+      lic.numeroProcesso?.toLowerCase().includes(termo) ||
+      lic.modalidade?.toLowerCase().includes(termo) ||
+      lic.objetoGeral?.toLowerCase().includes(termo) ||
+      lic.ataRegistroPrecos?.toLowerCase().includes(termo) ||
+      lic.orgaoGerenciador?.toLowerCase().includes(termo);
+
+    const termoEmSub = lic.subContratos.some(sub => 
+      sub.subId?.toLowerCase().includes(termo) ||
+      sub.secretariaOrgao?.toLowerCase().includes(termo) ||
+      sub.objetoEspecifico?.toLowerCase().includes(termo) ||
+      sub.numeroContratoMae?.toLowerCase().includes(termo) ||
+      sub.gestorContrato?.toLowerCase().includes(termo) ||
+      sub.fiscalContrato?.toLowerCase().includes(termo)
+    );
+
+    const termoEmMedicao = lic.subContratos.some(sub =>
+      sub.medicoes.some(med => 
+        med.mesCompetencia?.toLowerCase().includes(termo) ||
+        med.numeroNf?.toLowerCase().includes(termo) ||
+        med.observacoes?.toLowerCase().includes(termo) ||
+        med.status?.toLowerCase().includes(termo)
+      )
+    );
+
+    return termoEmMae || termoEmSub || termoEmMedicao;
+  });
+
   // --- FUNÇÕES DE CRUD (Licitações Mães) ---
   const handleSalvarLicitacao = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -430,6 +461,25 @@ export default function App() {
         </nav>
       </header>
 
+      {/* BARRA DE PESQUISA / FILTRO GLOBAL */}
+      <div className="bg-slate-900/60 border-b border-slate-800/80 px-6 py-3">
+        <div className="max-w-7xl mx-auto flex items-center gap-3 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2">
+          <Search className="w-4 h-4 text-slate-400 shrink-0" />
+          <input
+            type="text"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Pesquisar por processo, ata, órgão, NF, subcontrato ou observação..."
+            className="w-full bg-transparent text-sm text-white focus:outline-none placeholder-slate-500"
+          />
+          {busca && (
+            <button onClick={() => setBusca('')} className="text-slate-500 hover:text-slate-300">
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* CONTEÚDO PRINCIPAL */}
       <main className="flex-1 p-6 max-w-7xl mx-auto w-full space-y-6">
         
@@ -498,7 +548,7 @@ export default function App() {
                   <Layers className="w-5 h-5 text-blue-500" /> Licitações Cadastradas Recentes
                 </h3>
                 <div className="space-y-3">
-                  {licitacoes.slice(0, 3).map(lic => (
+                  {licitacoesFiltradas.slice(0, 3).map(lic => (
                     <div key={lic.id} className="bg-slate-950 p-4 rounded-xl border border-slate-800/60 flex justify-between items-center">
                       <div>
                         <span className="text-xs font-semibold px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded">Proc. {lic.numeroProcesso}</span>
@@ -565,114 +615,120 @@ export default function App() {
             </div>
 
             <div className="grid grid-cols-1 gap-4">
-              {licitacoes.map(lic => (
-                <div key={lic.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm space-y-4">
-                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-800 pb-4">
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="bg-blue-500/20 text-blue-400 text-xs px-2.5 py-1 rounded font-semibold">
-                          Processo nº {lic.numeroProcesso}
-                        </span>
-                        <span className="bg-purple-500/20 text-purple-400 text-xs px-2.5 py-1 rounded font-semibold">
-                          {lic.modalidade}
-                        </span>
-                        <span className="bg-emerald-500/20 text-emerald-400 text-xs px-2.5 py-1 rounded font-semibold">
-                          Ata: {lic.ataRegistroPrecos}
-                        </span>
-                      </div>
-                      <h3 className="text-lg font-bold text-white mt-2">{lic.objetoGeral}</h3>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => {
-                          setLicitacaoMaeIdParaSub(lic.id);
-                          setSubContratoEmEdicao(null);
-                          setModalSubContratoOpen(true);
-                        }}
-                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded-lg transition flex items-center gap-1.5"
-                      >
-                        <Plus className="w-3.5 h-3.5" /> Adicionar Subcontrato
-                      </button>
-                      <button
-                        onClick={() => {
-                          setLicitacaoEmEdicao(lic);
-                          setModalLicitacaoOpen(true);
-                        }}
-                        className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => excluirLicitacao(lic.id)}
-                        className="p-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg transition"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Lista de Subcontratos vinculados */}
-                  <div>
-                    <h4 className="text-sm font-semibold text-slate-300 mb-3">Subcontratos Vinculados ({lic.subContratos.length})</h4>
-                    {lic.subContratos.length === 0 ? (
-                      <p className="text-xs text-slate-500 italic bg-slate-950 p-3 rounded-lg">Nenhum subcontrato cadastrado para esta licitação mãe.</p>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {lic.subContratos.map(sub => (
-                          <div key={sub.id} className="bg-slate-950 border border-slate-800/80 p-4 rounded-xl space-y-2">
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <span className="text-xs bg-indigo-500/20 text-indigo-400 px-2 py-0.5 rounded font-mono">
-                                  Sub-ID: {sub.subId}
-                                </span>
-                                <h5 className="font-semibold text-sm text-white mt-1">{sub.secretariaOrgao}</h5>
-                              </div>
-                              <div className="flex gap-1">
-                                <button
-                                  onClick={() => {
-                                    setLicitacaoMaeIdParaMedicao(lic.id);
-                                    setSubContratoIdParaMedicao(sub.id);
-                                    setMedicaoEmEdicao(null);
-                                    setModalMedicaoOpen(true);
-                                  }}
-                                  title="Adicionar Medição/Parcela"
-                                  className="p-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 rounded transition"
-                                >
-                                  <Plus className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setLicitacaoMaeIdParaSub(lic.id);
-                                    setSubContratoEmEdicao(sub);
-                                    setModalSubContratoOpen(true);
-                                  }}
-                                  className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded transition"
-                                >
-                                  <Edit2 className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={() => excluirSubContrato(lic.id, sub.id)}
-                                  className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded transition"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-                            <p className="text-xs text-slate-400">{sub.objetoEspecifico}</p>
-                            <div className="flex justify-between items-center text-xs pt-2 border-t border-slate-900">
-                              <span className="text-emerald-400 font-bold">
-                                {sub.valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                              </span>
-                              <span className="text-slate-400">Medições: {sub.medicoes.length}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+              {licitacoesFiltradas.length === 0 ? (
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center text-slate-400">
+                  Nenhuma licitação encontrada para os termos pesquisados.
                 </div>
-              ))}
+              ) : (
+                licitacoesFiltradas.map(lic => (
+                  <div key={lic.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm space-y-4">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-800 pb-4">
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="bg-blue-500/20 text-blue-400 text-xs px-2.5 py-1 rounded font-semibold">
+                            Processo nº {lic.numeroProcesso}
+                          </span>
+                          <span className="bg-purple-500/20 text-purple-400 text-xs px-2.5 py-1 rounded font-semibold">
+                            {lic.modalidade}
+                          </span>
+                          <span className="bg-emerald-500/20 text-emerald-400 text-xs px-2.5 py-1 rounded font-semibold">
+                            Ata: {lic.ataRegistroPrecos}
+                          </span>
+                        </div>
+                        <h3 className="text-lg font-bold text-white mt-2">{lic.objetoGeral}</h3>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            setLicitacaoMaeIdParaSub(lic.id);
+                            setSubContratoEmEdicao(null);
+                            setModalSubContratoOpen(true);
+                          }}
+                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded-lg transition flex items-center gap-1.5"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Adicionar Subcontrato
+                        </button>
+                        <button
+                          onClick={() => {
+                            setLicitacaoEmEdicao(lic);
+                            setModalLicitacaoOpen(true);
+                          }}
+                          className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => excluirLicitacao(lic.id)}
+                          className="p-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg transition"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Lista de Subcontratos vinculados */}
+                    <div>
+                      <h4 className="text-sm font-semibold text-slate-300 mb-3">Subcontratos Vinculados ({lic.subContratos.length})</h4>
+                      {lic.subContratos.length === 0 ? (
+                        <p className="text-xs text-slate-500 italic bg-slate-950 p-3 rounded-lg">Nenhum subcontrato cadastrado para esta licitação mãe.</p>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {lic.subContratos.map(sub => (
+                            <div key={sub.id} className="bg-slate-950 border border-slate-800/80 p-4 rounded-xl space-y-2">
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <span className="text-xs bg-indigo-500/20 text-indigo-400 px-2 py-0.5 rounded font-mono">
+                                    Sub-ID: {sub.subId}
+                                  </span>
+                                  <h5 className="font-semibold text-sm text-white mt-1">{sub.secretariaOrgao}</h5>
+                                </div>
+                                <div className="flex gap-1">
+                                  <button
+                                    onClick={() => {
+                                      setLicitacaoMaeIdParaMedicao(lic.id);
+                                      setSubContratoIdParaMedicao(sub.id);
+                                      setMedicaoEmEdicao(null);
+                                      setModalMedicaoOpen(true);
+                                    }}
+                                    title="Adicionar Medição/Parcela"
+                                    className="p-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 rounded transition"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setLicitacaoMaeIdParaSub(lic.id);
+                                      setSubContratoEmEdicao(sub);
+                                      setModalSubContratoOpen(true);
+                                    }}
+                                    className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded transition"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => excluirSubContrato(lic.id, sub.id)}
+                                    className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded transition"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                              <p className="text-xs text-slate-400">{sub.objetoEspecifico}</p>
+                              <div className="flex justify-between items-center text-xs pt-2 border-t border-slate-900">
+                                <span className="text-emerald-400 font-bold">
+                                  {sub.valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                </span>
+                                <span className="text-slate-400">Medições: {sub.medicoes.length}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}
@@ -699,12 +755,12 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
-                    {licitacoes.flatMap(l => l.subContratos.map(s => ({ ...s, licId: l.id }))).length === 0 ? (
+                    {licitacoesFiltradas.flatMap(l => l.subContratos.map(s => ({ ...s, licId: l.id }))).length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="px-6 py-6 text-center text-slate-500">Nenhum subcontrato cadastrado.</td>
+                        <td colSpan={6} className="px-6 py-6 text-center text-slate-500">Nenhum subcontrato encontrado.</td>
                       </tr>
                     ) : (
-                      licitacoes.flatMap(l => l.subContratos.map(s => ({ ...s, licId: l.id }))).map(sub => (
+                      licitacoesFiltradas.flatMap(l => l.subContratos.map(s => ({ ...s, licId: l.id }))).map(sub => (
                         <tr key={sub.id} className="hover:bg-slate-800/40 transition">
                           <td className="px-6 py-4 font-mono font-medium text-white">
                             {sub.subId} <br/>
@@ -716,7 +772,7 @@ export default function App() {
                             {sub.valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                           </td>
                           <td className="px-6 py-4">{sub.dataFimVigencia}</td>
-                          <td className="px-6 py-4 text-right">
+                          <td className="px-6 py-4 text-right flex justify-end gap-2">
                             <button
                               onClick={() => {
                                 setLicitacaoMaeIdParaSub(sub.licId);
@@ -726,6 +782,12 @@ export default function App() {
                               className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition"
                             >
                               <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => excluirSubContrato(sub.licId, sub.id)}
+                              className="p-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg transition"
+                            >
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           </td>
                         </tr>
@@ -760,12 +822,12 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
-                    {todasMedicoes.length === 0 ? (
+                    {licitacoesFiltradas.flatMap(l => l.subContratos.flatMap(s => s.medicoes)).length === 0 ? (
                       <tr>
                         <td colSpan={6} className="px-6 py-6 text-center text-slate-500">Nenhuma medição registrada.</td>
                       </tr>
                     ) : (
-                      licitacoes.flatMap(l => l.subContratos.flatMap(s => s.medicoes.map(m => ({ ...m, licId: l.id, subId: s.id })))).map(med => (
+                      licitacoesFiltradas.flatMap(l => l.subContratos.flatMap(s => s.medicoes.map(m => ({ ...m, licId: l.id, subId: s.id })))).map(med => (
                         <tr key={med.id} className="hover:bg-slate-800/40 transition">
                           <td className="px-6 py-4 font-medium text-white">
                             Parcela {med.numeroParcela} <br/>
@@ -789,7 +851,7 @@ export default function App() {
                             </span>
                           </td>
                           <td className="px-6 py-4 text-xs text-slate-400">{med.observacoes || '-'}</td>
-                          <td className="px-6 py-4 text-right">
+                          <td className="px-6 py-4 text-right flex justify-end gap-2">
                             <button
                               onClick={() => {
                                 setLicitacaoMaeIdParaMedicao(med.licId);
@@ -800,6 +862,12 @@ export default function App() {
                               className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition"
                             >
                               <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => excluirMedicao(med.licId, med.subId, med.id)}
+                              className="p-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg transition"
+                            >
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           </td>
                         </tr>
