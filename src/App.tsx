@@ -231,7 +231,7 @@ export default function App() {
         if (error) throw error;
 
         // Se houver registros na tabela, pega o JSON salvo. Se estiver vazia, usa o MOCK_INICIAL
-        if (data && data.length > 0 && data[0].data) {
+        if ((data && data || []).length > 0 && data[0].data) {
           setLicitacoes(data[0].data);
         } else {
           // Insere os dados iniciais se a tabela estiver completamente vazia
@@ -274,11 +274,11 @@ export default function App() {
         // Como criamos uma linha centralizadora na tabela, buscamos para ver se já existe ID ou atualizamos
         const { data } = await supabase.from('processos').select('id').limit(1);
 
-        if (data && data.length > 0) {
+        if ((data && data || []).length > 0) {
           await supabase
             .from('processos')
             .update({ data: licitacoes })
-            .eq('id', data[0].id);
+            .eq('id', data?.[0]?.id);
         } else {
           await supabase.from('processos').insert([{ data: licitacoes }]);
         }
@@ -339,7 +339,7 @@ export default function App() {
   const handleSalvarProcesso = (e: React.FormEvent) => {
     e.preventDefault();
     if (processoEditando) {
-      setLicitacoes(prev => prev.map(l => l.id === processoEditando.id ? { ...l, ...formProcesso } : l));
+      setLicitacoes(prev => (prev || []).map(l => l.id === processoEditando.id ? { ...l, ...formProcesso } : l));
     } else {
       const novoProc: LicitacaoMae = {
         id: Date.now().toString(),
@@ -381,13 +381,13 @@ export default function App() {
     e.preventDefault();
     const { licId, sub } = subIdEditando;
 
-    setLicitacoes(prev => prev.map(l => {
+    setLicitacoes(prev => (prev || []).map(l => {
       if (l.id !== licId) return l;
 
       if (sub) {
         return {
           ...l,
-          subIds: l.subIds.map(s => s.subId === sub.subId ? { ...s, ...formSubId } : s)
+          subIds: (l.subIds || []).map(s => s.subId === sub.subId ? { ...s, ...formSubId } : s)
         };
       } else {
         const novoSub: ParcelaSubID = {
@@ -404,7 +404,7 @@ export default function App() {
 
   const handleExcluirSubId = (licId: string, subId: string) => {
     if (confirm("Tem certeza que deseja excluir este Sub-ID e suas parcelas?")) {
-      setLicitacoes(prev => prev.map(l => {
+      setLicitacoes(prev => (prev || []).map(l => {
         if (l.id !== licId) return l;
         return { ...l, subIds: l.subIds.filter(s => s.subId !== subId) };
       }));
@@ -445,17 +445,17 @@ export default function App() {
 
     const { licId, subId, p } = parcelaEditando;
 
-    setLicitacoes(prev => prev.map(lic => {
+    setLicitacoes(prev => (prev || []).map(lic => {
       if (lic.id !== licId) return lic;
       return {
         ...lic,
-        subIds: lic.subIds.map(sub => {
+        subIds: (lic.subIds || []).map(sub => {
           if (sub.subId !== subId) return sub;
 
           if (p) {
             return {
               ...sub,
-              parcelas: sub.parcelas.map(item => {
+              parcelas: (sub.parcelas || []).map(item => {
                 if (item.idParcela !== p.idParcela) return item;
                 const status = formParcela.dataPagamento ? 'LIQUIDADO' : 'PENDENTE';
                 return {
@@ -492,15 +492,15 @@ export default function App() {
   };
 
   const handleAlternarLiquidacao = (licId: string, subId: string, idParcela: string, dataPgto?: string) => {
-    setLicitacoes(prev => prev.map(lic => {
+    setLicitacoes(prev => (prev || []).map(lic => {
       if (lic.id !== licId) return lic;
       return {
         ...lic,
-        subIds: lic.subIds.map(sub => {
+        subIds: (lic.subIds || []).map(sub => {
           if (sub.subId !== subId) return sub;
           return {
             ...sub,
-            parcelas: sub.parcelas.map(p => {
+            parcelas: (sub.parcelas || []).map(p => {
               if (p.idParcela !== idParcela) return p;
               const novoStatus = p.statusLiquidacao === 'LIQUIDADO' ? 'PENDENTE' : 'LIQUIDADO';
               return {
@@ -524,11 +524,11 @@ export default function App() {
 
   const handleExcluirParcela = (licId: string, subId: string, idParcela: string) => {
     if (!confirm("Deseja excluir esta etapa/parcela mensal?")) return;
-    setLicitacoes(prev => prev.map(lic => {
+    setLicitacoes(prev => (prev || []).map(lic => {
       if (lic.id !== licId) return lic;
       return {
         ...lic,
-        subIds: lic.subIds.map(sub => {
+        subIds: (lic.subIds || []).map(sub => {
           if (sub.subId !== subId) return sub;
           return { ...sub, parcelas: sub.parcelas.filter(p => p.idParcela !== idParcela) };
         })
@@ -537,66 +537,94 @@ export default function App() {
   };
 
   // GERENCIAMENTO DE ANEXOS DE DOCUMENTOS
-  const handleAdicionarAnexo = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleAdicionarAnexo = async (e: React.FormEvent) => {
+    e.preventDefault(); // Evita recarregar a página
     if (!parcelaSelecionada || !arquivoSelecionado) return;
 
-    const tamanhoKB = (arquivoSelecionado.size / 1024).toFixed(0) + ' KB';
-    const novoDoc: DocumentoAnexo = {
-      id: `doc-${Date.now()}`,
-      tipo: formTipoAnexo,
-      nomeArquivo: arquivoSelecionado.name,
-      dataUpload: new Date().toISOString().split('T')[0],
-      tamanho: tamanhoKB
-    };
+    try {
+      // 1. Limpa o nome do arquivo e cria um identificador único para evitar erros no Supabase
+      const nomeLimpo = arquivoSelecionado.name
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '') // Remove acentos
+        .replace(/[^a-zA-Z0-9.-]/g, '_'); // Troca espaços e símbolos por underline
 
-    const { lic, sub, p } = parcelaSelecionada;
+      const nomeUnico = `${Date.now()}_${nomeLimpo}`;
 
-    setLicitacoes(prev => prev.map(l => {
-      if (l.id !== lic.id) return l;
-      return {
-        ...l,
-        subIds: l.subIds.map(s => {
-          if (s.subId !== sub.subId) return s;
-          return {
-            ...s,
-            parcelas: s.parcelas.map(item => {
-              if (item.idParcela !== p.idParcela) return item;
-              return {
-                ...item,
-                documentos: [...(item.documentos || []), novoDoc]
-              };
-            })
-          };
-        })
-      };
-    }));
+      // 2. ENTRA O SUPABASE STORAGE: Envia o arquivo de verdade para o bucket
+      // (Certifique-se de que o nome do seu bucket no Supabase é 'documentos')
+      const { error: uploadError } = await supabase.storage
+        .from('documentos')
+        .upload(nomeUnico, arquivoSelecionado);
 
-    // Atualiza estado local de exibição no modal
-    setParcelaSelecionada({
-      ...parcelaSelecionada,
-      p: {
-        ...parcelaSelecionada.p,
-        documentos: [...(parcelaSelecionada.p.documentos || []), novoDoc]
+      if (uploadError) {
+        throw uploadError;
       }
-    });
 
-    setArquivoSelecionado(null);
+      // 3. Calcula o tamanho em KB
+      const tamanhoKB = (arquivoSelecionado.size / 1024).toFixed(0) + ' KB';
+
+      // 4. Cria o objeto do documento salvando o 'nomeUnico' que foi enviado ao Supabase
+      const novoDoc: DocumentoAnexo = {
+        id: `doc-${Date.now()}`,
+        tipo: formTipoAnexo,
+        nomeArquivo: nomeUnico, // Salvamos o nome único para o link funcionar perfeitamente
+        dataUpload: new Date().toISOString().split('T')[0],
+        tamanho: tamanhoKB
+      };
+
+      const { lic, sub, p } = parcelaSelecionada;
+
+      setLicitacoes(prev => (prev || []).map(l => {
+        if (l.id !== lic.id) return l;
+        return {
+          ...l,
+          subIds: (l.subIds || []).map(s => {
+            if (s.subId !== sub.subId) return s;
+            return {
+              ...s,
+              parcelas: (s.parcelas || []).map(item => {
+                if (item.idParcela !== p.idParcela) return item;
+                return {
+                  ...item,
+                  documentos: [...(item.documentos || []), novoDoc]
+                };
+              })
+            };
+          })
+        };
+      }));
+
+      // Atualiza estado local de exibição no modal
+      setParcelaSelecionada({
+        ...parcelaSelecionada,
+        p: {
+          ...parcelaSelecionada.p,
+          documentos: [...(parcelaSelecionada.p.documentos || []), novoDoc]
+        }
+      });
+
+      setArquivoSelecionado(null);
+      alert('Upload realizado com sucesso!');
+
+    } catch (error) {
+      console.error('Erro no upload:', error);
+      alert('Erro ao enviar o arquivo para o Supabase.');
+    }
   };
 
   const handleRemoverAnexo = (docId: string) => {
     if (!parcelaSelecionada) return;
     const { lic, sub, p } = parcelaSelecionada;
 
-    setLicitacoes(prev => prev.map(l => {
+    setLicitacoes(prev => (prev || []).map(l => {
       if (l.id !== lic.id) return l;
       return {
         ...l,
-        subIds: l.subIds.map(s => {
+        subIds: (l.subIds || []).map(s => {
           if (s.subId !== sub.subId) return s;
           return {
             ...s,
-            parcelas: s.parcelas.map(item => {
+            parcelas: (s.parcelas || []).map(item => {
               if (item.idParcela !== p.idParcela) return item;
               return {
                 ...item,
@@ -695,7 +723,7 @@ export default function App() {
         sub.parcelas.forEach(p => {
           if (!dataInicioFiltro || !dataFimFiltro || (p.dataPagamento && p.dataPagamento >= dataInicioFiltro && p.dataPagamento <= dataFimFiltro)) {
             const valFormatado = p.valor.toFixed(2).replace('.', ',');
-            const qtdAnexos = p.documentos ? p.documentos.length : 0;
+            const qtdAnexos = p.documentos ? (p.documentos || []).length : 0;
             csvContent += `"${lic.numeroProcesso.replace(/"/g, '""')}";"${sub.orgaoParticipante.replace(/"/g, '""')}";"${sub.subId}";"${sub.empenhoNumero}";"${p.numeroParcela}/${p.totalParcelas}";"${p.nfseNumero || ''}";"${p.dataEmissaoNFSe || ''}";"${p.dataPagamento || ''}";"${valFormatado}";"${p.statusLiquidacao}";"${qtdAnexos} arquivo(s)"\n`;
           }
         });
@@ -717,7 +745,7 @@ export default function App() {
   };
 
   // KPIS GENERALIZADOS E FILTRAGEM ESTRITA DE PAGOS PARA PDF
-  const todasParcelas = licitacoes.flatMap(l => l.subIds.flatMap(s => s.parcelas));
+  const todasParcelas = (licitacoes || []).flatMap(l => (l.subIds || []).flatMap(s => (s.parcelas || [])));
   const totalFaturado = todasParcelas.reduce((acc, p) => acc + p.valor, 0);
   const totalRecebido = todasParcelas.filter(p => p.statusLiquidacao === 'LIQUIDADO').reduce((acc, p) => acc + p.valor, 0);
   const totalEmAtraso = todasParcelas
@@ -725,15 +753,15 @@ export default function App() {
     .reduce((acc, p) => acc + p.valor, 0);
 
   // LISTA ESTRITA APENAS DE PARCELAS PAGAS DENTRO DO FILTRO
-  const relatorioPDFPagos = licitacoes.flatMap(lic => 
-    lic.subIds.flatMap(sub => 
-      sub.parcelas
+  const relatorioPDFPagos = (licitacoes || []).flatMap(lic => 
+    (lic.subIds || []).flatMap(sub => 
+      ((sub.parcelas || [])
         .filter(p => p.statusLiquidacao === 'LIQUIDADO' && p.dataPagamento)
         .filter(p => {
           if (dataInicioFiltro && p.dataPagamento! < dataInicioFiltro) return false;
           if (dataFimFiltro && p.dataPagamento! > dataFimFiltro) return false;
           return true;
-        })
+        }) || [])
         .map(p => ({
           processo: lic.numeroProcesso,
           modalidade: lic.modalidade,
@@ -752,8 +780,8 @@ export default function App() {
   const valorTotalPDFPagos = relatorioPDFPagos.reduce((acc, item) => acc + item.valor, 0);
 
   // Mapeamento flat de parcelas com controle de índice para posicionar dropdowns
-  const listaTodasParcelasVisiveis = licitacoes.flatMap(lic => 
-    lic.subIds.flatMap(sub => sub.parcelas)
+  const listaTodasParcelasVisiveis = (licitacoes || []).flatMap(lic => 
+    (lic.subIds || []).flatMap(sub => (sub.parcelas || []))
   );
 
   return (
@@ -809,12 +837,12 @@ export default function App() {
               <strong>Período Selecionado:</strong> {dataInicioFiltro ? new Date(dataInicioFiltro).toLocaleDateString('pt-BR') : 'Geral'} até {dataFimFiltro ? new Date(dataFimFiltro).toLocaleDateString('pt-BR') : 'Geral'}
             </span>
             <span className="text-sm font-bold text-emerald-700">
-              TOTAL RECEBIDO NO PERÍODO: {valorTotalPDFPagos.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} ({relatorioPDFPagos.length} parcelas)
+              TOTAL RECEBIDO NO PERÍODO: {valorTotalPDFPagos.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} ({(relatorioPDFPagos || []).length} parcelas)
             </span>
           </div>
         </div>
 
-        {relatorioPDFPagos.length > 0 ? (
+        {(relatorioPDFPagos || []).length > 0 ? (
           <table className="pdf-table">
             <thead>
               <tr>
@@ -828,7 +856,7 @@ export default function App() {
               </tr>
             </thead>
             <tbody>
-              {relatorioPDFPagos.map((item, idx) => (
+              {(relatorioPDFPagos || []).map((item, idx) => (
                 <tr key={idx}>
                   <td><strong>{item.processo}</strong> (Sub {item.subId})</td>
                   <td>{item.orgao}</td>
@@ -922,9 +950,9 @@ export default function App() {
           <div className="text-right">
             <span className="text-[10px] text-slate-400 uppercase font-bold block">Total Pago no Período</span>
             <span className="text-sm font-black text-emerald-600">
-              {valorTotalPDFPagos.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} ({relatorioPDFPagos.length} pago/s)
+              {valorTotalPDFPagos.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} ({(relatorioPDFPagos || []).length} pago/s)
             </span>
-          </div>
+          </div>npm run deploy
           <div className="flex gap-2">
             <button 
               onClick={handleExportarPDF}
@@ -961,7 +989,7 @@ export default function App() {
         <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-yellow-500">
           <span className="text-xs font-semibold uppercase text-slate-400">Alertas D21 a D29</span>
           <div className="text-2xl font-bold text-yellow-600 mt-1">
-            {todasParcelas.filter(p => calcularStatusPrazo(p.dataEmissaoNFSe, p.statusLiquidacao).status === 'PRE_COBRANCA').length} Parcela(s)
+            {(todasParcelas.filter(p => calcularStatusPrazo(p.dataEmissaoNFSe, p.statusLiquidacao).status === 'PRE_COBRANCA') || []).length} Parcela(s)
           </div>
         </div>
 
@@ -989,7 +1017,7 @@ export default function App() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 text-sm">
-            {licitacoes.map((lic) => {
+            {(licitacoes || []).map((lic) => {
               const expProc = linhasExpandidas[lic.id];
 
               return (
@@ -1003,10 +1031,10 @@ export default function App() {
                     </td>
                     <td className="p-3" colSpan={2}>{lic.orgaoGerenciador}</td>
                     <td className="p-3 font-bold">
-                      {lic.subIds.flatMap(s => s.parcelas).reduce((a, c) => a + c.valor, 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      {(lic.subIds || []).flatMap(s => (s.parcelas || [])).reduce((a, c) => a + c.valor, 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                     </td>
                     <td className="p-3 text-xs text-slate-500" colSpan={2}>
-                      {lic.subIds.length} Sub-ID(s) cadastrados
+                      {(lic.subIds || []).length} Sub-ID(s) cadastrados
                     </td>
                     <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
                       {/* MENU PROCESSO MÃE */}
@@ -1041,7 +1069,7 @@ export default function App() {
                   </tr>
 
                   {/* SUB-IDS */}
-                  {expProc && lic.subIds.map((sub) => {
+                  {(expProc && lic.subIds || []).map((sub) => {
                     const expSub = subIdsExpandidos[sub.subId] ?? true;
                     const totalSub = sub.parcelas.reduce((a, c) => a + c.valor, 0);
 
@@ -1060,7 +1088,7 @@ export default function App() {
                             {totalSub.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                           </td>
                           <td className="p-3 text-xs text-slate-500" colSpan={2}>
-                            {sub.parcelas.length} Parcela(s) / Etapa(s)
+                            {(sub.parcelas || []).length} Parcela(s) / Etapa(s)
                           </td>
                           <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
                             {/* MENU SUB-ID */}
@@ -1077,7 +1105,7 @@ export default function App() {
                               {menuAtivoId === `sub-${sub.subId}` && (
                                 <div className="origin-top-right absolute right-0 mt-1 w-44 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-40 border py-1">
                                   <button
-                                    onClick={() => { handleAbrirCriarParcela(lic.id, sub.subId, sub.parcelas.length); setMenuAtivoId(null); }}
+                                    onClick={() => { handleAbrirCriarParcela(lic.id, sub.subId, (sub.parcelas || []).length); setMenuAtivoId(null); }}
                                     className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-slate-100 flex items-center gap-2"
                                   >
                                     ➕ Nova Parcela/NFSe
@@ -1095,16 +1123,16 @@ export default function App() {
                         </tr>
 
                         {/* PARCELAS / ETAPAS */}
-                        {expSub && sub.parcelas.map((parcela) => {
+                        {(expSub && sub.parcelas || []).map((parcela) => {
                           const prazo = calcularStatusPrazo(parcela.dataEmissaoNFSe, parcela.statusLiquidacao);
-                          const qtdDocs = parcela.documentos ? parcela.documentos.length : 0;
+                          const qtdDocs = parcela.documentos ? (parcela.documentos || []).length : 0;
 
                           if (dataInicioFiltro && parcela.dataPagamento && parcela.dataPagamento < dataInicioFiltro) return null;
                           if (dataFimFiltro && parcela.dataPagamento && parcela.dataPagamento > dataFimFiltro) return null;
 
                           // Identifica a posição no grid global para direcionar o Dropdown (evita corte de layout na última linha)
                           const indiceGlobal = listaTodasParcelasVisiveis.findIndex(p => p.idParcela === parcela.idParcela);
-                          const eUltimaLinha = indiceGlobal >= listaTodasParcelasVisiveis.length - 2 && listaTodasParcelasVisiveis.length > 2;
+                          const eUltimaLinha = indiceGlobal >= (listaTodasParcelasVisiveis || []).length - 2 && (listaTodasParcelasVisiveis || []).length > 2;
 
                           return (
                             <tr key={parcela.idParcela} className="hover:bg-slate-100/50 transition border-l-4 border-l-indigo-300 text-xs">
@@ -1310,9 +1338,9 @@ export default function App() {
             {/* LISTAGEM DE DOCUMENTOS ANEXADOS */}
             <div>
               <h4 className="text-xs font-bold text-slate-700 mb-2">Arquivos Cadastrados nesta Parcela:</h4>
-              {parcelaSelecionada.p.documentos && parcelaSelecionada.p.documentos.length > 0 ? (
+              {(parcelaSelecionada.p.documentos && parcelaSelecionada.p.documentos || []).length > 0 ? (
                 <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                  {parcelaSelecionada.p.documentos.map((doc) => (
+                  {(parcelaSelecionada.p.documentos || []).map((doc) => (
                     <div key={doc.id} className="flex items-center justify-between p-2.5 bg-white border rounded-lg hover:border-blue-300 transition shadow-sm">
                       <div className="flex items-center gap-2.5 overflow-hidden">
                         <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded uppercase">
@@ -1330,7 +1358,15 @@ export default function App() {
 
                       <div className="flex items-center gap-1">
                         <button
-                          onClick={() => alert(`Visualização simulada do arquivo: ${doc.nomeArquivo}`)}
+                          onClick={() => {
+                            // Substitua 'documentos' pelo nome exato do seu Bucket no Supabase
+                            const { data } = supabase.storage.from('documentos').getPublicUrl(doc.nomeArquivo);
+                            if (data?.publicUrl) {
+                              window.open(data.publicUrl, '_blank');
+                            } else {
+                            alert('Não foi possível abrir o arquivo.');
+                            }
+                          }}
                           className="text-xs px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded font-medium transition"
                           title="Visualizar Documento"
                         >
