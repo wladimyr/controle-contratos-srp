@@ -1,4 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { supabase } from './supabaseClient';
+import { 
+  Plus, Search, FileText, Calendar, Building, DollarSign, 
+  CheckCircle, AlertTriangle, Clock, Trash2, Edit2, ChevronRight, 
+  Paperclip, Shield, BarChart2, Layers, Download, Upload, RefreshCw, X
+} from 'lucide-react';
 
 // ==========================================
 // 1. ESTRUTURA DE DADOS
@@ -173,10 +179,8 @@ const MOCK_INICIAL: LicitacaoMae[] = [
 // 4. COMPONENTE PRINCIPAL (APP)
 // ==========================================
 export default function App() {
-  const [licitacoes, setLicitacoes] = useState<LicitacaoMae[]>(() => {
-    const dadosSalvos = localStorage.getItem('@contratos_srp_v4_data');
-    return dadosSalvos ? JSON.parse(dadosSalvos) : MOCK_INICIAL;
-  });
+  const [licitacoes, setLicitacoes] = useState<LicitacaoMae[]>(MOCK_INICIAL);
+  const [carregandoNuvem, setCarregandoNuvem] = useState(true);
 
   const [linhasExpandidas, setLinhasExpandidas] = useState<Record<string, boolean>>({ "1": true, "2": true });
   const [subIdsExpandidos, setSubIdsExpandidos] = useState<Record<string, boolean>>({ "1.1": true, "2.1": true, "2.2": true });
@@ -216,9 +220,83 @@ export default function App() {
   const [dataInicioFiltro, setDataInicioFiltro] = useState('');
   const [dataFimFiltro, setDataFimFiltro] = useState('');
 
+  // 1. Carregar dados do Supabase ao iniciar a aplicação + Realtime
   useEffect(() => {
-    localStorage.setItem('@contratos_srp_v4_data', JSON.stringify(licitacoes));
+    async function carregarDados() {
+      try {
+        const { data, error } = await supabase
+          .from('processos')
+          .select('*');
+
+        if (error) throw error;
+
+        // Se houver registros na tabela, pega o JSON salvo. Se estiver vazia, usa o MOCK_INICIAL
+        if (data && data.length > 0 && data[0].data) {
+          setLicitacoes(data[0].data);
+        } else {
+          // Insere os dados iniciais se a tabela estiver completamente vazia
+          await supabase.from('processos').insert([{ data: MOCK_INICIAL }]);
+        }
+      } catch (err) {
+        console.error('Erro ao carregar do Supabase:', err);
+      } finally {
+        setCarregandoNuvem(false);
+      }
+    }
+
+    carregarDados();
+
+    // Ouvir alterações em tempo real de outros dispositivos
+    const channel = supabase
+      .channel('schema-db-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'processos' },
+        (payload: any) => {
+          if (payload.new && payload.new.data) {
+            setLicitacoes(payload.new.data);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // 2. Salvar automaticamente no Supabase sempre que 'licitacoes' mudar
+  useEffect(() => {
+    if (carregandoNuvem) evitaSalvarNoInicioDeCarregamento.current = true; // trava o primeiro ciclo vazio
+
+    async function salvarNaNuvem() {
+      try {
+        // Como criamos uma linha centralizadora na tabela, buscamos para ver se já existe ID ou atualizamos
+        const { data } = await supabase.from('processos').select('id').limit(1);
+
+        if (data && data.length > 0) {
+          await supabase
+            .from('processos')
+            .update({ data: licitacoes })
+            .eq('id', data[0].id);
+        } else {
+          await supabase.from('processos').insert([{ data: licitacoes }]);
+        }
+      } catch (err) {
+        console.error('Erro ao salvar no Supabase:', err);
+      }
+    }
+
+    if (!carregandoNuvem) {
+      salvarNaNuvem();
+    }
   }, [licitacoes]);
+
+  // Pequena referência de controle para evitar sobrescrever a nuvem antes do load inicial
+  const evitaSalvarNoInicioDeCarregamento = React.useRef(true);
+  useEffect(() => {
+    evitaSalvarNoInicioDeCarregamento.current = false;
+  }, []);
 
   // Fechar menus ao clicar fora e ao pressionar ESC
   useEffect(() => {
